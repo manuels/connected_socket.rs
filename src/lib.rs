@@ -4,8 +4,8 @@ extern crate libc;
 
 use libc::funcs::bsd43::connect;
 use std::os;
-use std::os::unix::AsRawFd;
-use std::os::unix::Fd;
+use std::os::unix::io::AsRawFd;
+use std::os::unix::io::Fd;
 use std::net::UdpSocket;
 use std::net::ToSocketAddrs;
 use std::net::SocketAddr;
@@ -27,7 +27,7 @@ use libc::consts::os::bsd44::SOL_SOCKET;
 use libc::consts::os::bsd44::AF_INET;
 use libc::consts::os::bsd44::AF_INET6;
 use libc::consts::os::posix88::EAGAIN;
-use std::net::IpAddr;
+use std::old_io::net::ip::IpAddr;
 use libc::types::os::arch::c95::c_int;
 use libc::types::os::arch::c95::c_char;
 use libc::types::common::c95::c_void;
@@ -121,14 +121,12 @@ trait IntoSockaddrIn {
 
 impl IntoSockaddrIn for SocketAddr {
 	fn into_sockaddr_in(self) -> Result<SockaddrIn, Error> {
-		let ip = format!("{}", self.ip());
-
-		match self.ip() {
-			IpAddr::V4(_) => {
+		match self {
+			SocketAddr::V4(a) => {
 				let mut addr = new_sockaddr_in();
 				addr.sin_port = Int::to_be(self.port());
 
-				let cstr = CString::new(ip.clone()).unwrap();
+				let cstr = CString::new(format!("{}",a.ip())).unwrap();
 				let res = unsafe {
 					inet_pton(addr.sin_family as c_int,
 						cstr.as_ptr() as *const i8,
@@ -143,11 +141,11 @@ impl IntoSockaddrIn for SocketAddr {
 				}
 			},
 
-			IpAddr::V6(_) => {
+			SocketAddr::V6(a) => {
 				let mut addr = new_sockaddr_in6();
 				addr.sin6_port = Int::to_be(self.port());
 
-				let cstr = CString::new(ip.clone()).unwrap();
+				let cstr = CString::new(format!("{}",a.ip())).unwrap();
 				let res = unsafe {
 					inet_pton(addr.sin6_family as c_int,
 						cstr.as_ptr() as *const i8,

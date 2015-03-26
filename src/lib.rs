@@ -1,4 +1,4 @@
-#![feature(net,io,libc,std_misc,os)]
+#![feature(net,io,libc,std_misc,os,io_ext,old_io)]
 
 extern crate libc;
 

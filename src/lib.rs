@@ -1,11 +1,10 @@
-#![feature(net,io,libc,std_misc,os,io_ext,old_io)]
+#![feature(libc,std_misc)]
 
 extern crate libc;
 
 use libc::funcs::bsd43::connect;
-use std::os;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::io::Fd;
+use std::os::unix::io::RawFd;
 use std::net::UdpSocket;
 use std::net::ToSocketAddrs;
 use std::net::SocketAddr;
@@ -26,15 +25,12 @@ use libc::funcs::bsd43::setsockopt;
 use libc::consts::os::bsd44::SOL_SOCKET;
 use libc::consts::os::bsd44::AF_INET;
 use libc::consts::os::bsd44::AF_INET6;
-use libc::consts::os::posix88::EAGAIN;
-use std::old_io::net::ip::IpAddr;
 use libc::types::os::arch::c95::c_int;
 use libc::types::os::arch::c95::c_char;
 use libc::types::common::c95::c_void;
 use libc::funcs::bsd43::send;
 use libc::funcs::bsd43::recv;
 use std::num::Int;
-use std::os::errno;
 use std::ffi::CString;
 
 const SO_RCVTIMEO:c_int = 20;
@@ -48,7 +44,7 @@ pub struct ConnectedSocket<S: ?Sized> {
 }
 
 impl<S: AsRawFd+?Sized> AsRawFd for ConnectedSocket<S> {
-	fn as_raw_fd(&self) -> Fd {
+	fn as_raw_fd(&self) -> RawFd {
 		self.sock.as_raw_fd()
 	}
 }
@@ -137,7 +133,7 @@ impl IntoSockaddrIn for SocketAddr {
 					Ok(SockaddrIn::V4(addr))
 				} else {
 					Err(Error::new(ErrorKind::Other,
-						"calling inet_pton() for ipv4", None))
+						"calling inet_pton() for ipv4"))
 				}
 			},
 
@@ -156,7 +152,7 @@ impl IntoSockaddrIn for SocketAddr {
 					Ok(SockaddrIn::V6(addr))
 				} else {
 					Err(Error::new(ErrorKind::Other,
-						"calling inet_pton() for ipv6", None))
+						"calling inet_pton() for ipv6"))
 				}
 			}
 		}
@@ -174,7 +170,7 @@ impl Connect for UdpSocket {
 		let addr = try!(address.to_socket_addrs()).next();
 		if addr.is_none() {
 			return Err(Error::new(ErrorKind::InvalidInput,
-				"no addresses to connect to", None));
+				"no addresses to connect to"));
 		}
 
 		let saddr = try!(addr.unwrap().into_sockaddr_in());
@@ -196,7 +192,7 @@ impl Connect for UdpSocket {
 			Ok(ConnectedSocket { sock: self })
 		} else {	
 			Err(Error::new(ErrorKind::Other,
-				"error calling connect()", None))
+				"error calling connect()"))
 		}
 	}
 }
@@ -211,16 +207,9 @@ impl<S: AsRawFd+?Sized> Read for ConnectedSocket<S> {
 		};
 
 		match len {
-			-1 => {
-				match errno() {
-					EAGAIN => Err(Error::new(ErrorKind::Interrupted, "EAGAIN", None)),
-					_ => Err(Error::new(ErrorKind::Other,
-							"recv() returned -1",
-							Some(os::error_string(os::errno() as i32)))),
-				}
-			},
+			-1 => Err(Error::last_os_error()),
 			0 => Err(Error::new(ErrorKind::Other,
-				"connection is closed", None)),
+				"connection is closed")),
 			_ => Ok(len as usize),
 		}
 	}
@@ -237,9 +226,7 @@ impl<S: AsRawFd+?Sized> Write for ConnectedSocket<S> {
 		if res == (buf.len() as i64) {
 			Ok(res as usize)
 		} else {
-			Err(Error::new(ErrorKind::Other,
-				"send() failed",
-				Some(os::error_string(os::errno() as i32))))
+			Err(Error::last_os_error())
 		}
 	}
 

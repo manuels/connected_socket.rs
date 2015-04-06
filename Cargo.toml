@@ -1,7 +1,7 @@
 [package]
 
 name = "connected_socket"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Manuel Schölling <manuel.schoelling@gmx.de>"]
 
 license = "GPL-2.0"
@@ -9,3 +9,6 @@ description = "Connect() for UDP sockets"
 repository = "https://github.com/manuels/connected_socket.rs"
 keywords = ["udp","socket","connect"]
 
+[dependencies]
+time = "*"
+libc = "*"

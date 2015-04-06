@@ -1,6 +1,5 @@
-#![feature(libc,std_misc)]
-
 extern crate libc;
+extern crate time;
 
 use libc::funcs::bsd43::connect;
 use std::os::unix::io::AsRawFd;
@@ -13,7 +12,7 @@ use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
 use std::mem;
-use std::time::duration::Duration;
+use time::Duration;
 use libc::types::os::common::bsd44::socklen_t;
 use libc::types::os::common::bsd44::sockaddr_in;
 use libc::types::os::common::bsd44::sockaddr_in6;

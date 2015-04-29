@@ -1,5 +1,6 @@
 extern crate libc;
 extern crate time;
+extern crate byteorder;
 
 use libc::funcs::bsd43::connect;
 use std::os::unix::io::AsRawFd;
@@ -11,6 +12,7 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Read;
 use std::io::Write;
+use std::io::Cursor;
 use std::mem;
 use time::Duration;
 use libc::types::os::common::bsd44::socklen_t;
@@ -29,8 +31,9 @@ use libc::types::os::arch::c95::c_char;
 use libc::types::common::c95::c_void;
 use libc::funcs::bsd43::send;
 use libc::funcs::bsd43::recv;
-use std::num::Int;
 use std::ffi::CString;
+
+use byteorder::{BigEndian, WriteBytesExt};
 
 const SO_RCVTIMEO:c_int = 20;
 
@@ -40,6 +43,27 @@ extern {
 
 pub struct ConnectedSocket<S: ?Sized> {
 	sock: S
+}
+
+fn to_be(host: u16) -> u16 {
+	let mut net = 0u16;
+
+	let len = mem::size_of_val(&net);
+	let buf: Vec<u8> = unsafe {
+		let ptr:*mut u8 = mem::transmute(&mut net);
+		Vec::from_raw_parts(ptr, len, len)
+	};
+	let mut c = Cursor::new(buf);
+
+	c.write_u16::<BigEndian>(host).unwrap();
+	unsafe {
+		// 'c' is a pointer to 'net' and 'net' is memory-managed,
+		// so 'net' is dropped when returning and dropping 'c' would actually
+		// double-drop 'net'
+		mem::forget(c)
+	};
+
+	net
 }
 
 impl<S: AsRawFd+?Sized> AsRawFd for ConnectedSocket<S> {
@@ -119,7 +143,7 @@ impl IntoSockaddrIn for SocketAddr {
 		match self {
 			SocketAddr::V4(a) => {
 				let mut addr = new_sockaddr_in();
-				addr.sin_port = Int::to_be(self.port());
+				addr.sin_port = to_be(self.port());
 
 				let cstr = CString::new(format!("{}",a.ip())).unwrap();
 				let res = unsafe {
@@ -138,7 +162,7 @@ impl IntoSockaddrIn for SocketAddr {
 
 			SocketAddr::V6(a) => {
 				let mut addr = new_sockaddr_in6();
-				addr.sin6_port = Int::to_be(self.port());
+				addr.sin6_port = to_be(self.port());
 
 				let cstr = CString::new(format!("{}",a.ip())).unwrap();
 				let res = unsafe {

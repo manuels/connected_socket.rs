@@ -10,6 +10,5 @@ repository = "https://github.com/manuels/connected_socket.rs"
 keywords = ["udp","socket","connect"]
 
 [dependencies]
-time = "*"
-libc = "*"
+libc = "^0.2"
 byteorder = "0.3.9"

@@ -1,8 +1,6 @@
 extern crate libc;
-extern crate time;
 extern crate byteorder;
 
-use libc::funcs::bsd43::connect;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::net::UdpSocket;
@@ -14,23 +12,23 @@ use std::io::Read;
 use std::io::Write;
 use std::io::Cursor;
 use std::mem;
-use time::Duration;
-use libc::types::os::common::bsd44::socklen_t;
-use libc::types::os::common::bsd44::sockaddr_in;
-use libc::types::os::common::bsd44::sockaddr_in6;
-use libc::types::os::common::bsd44::in_addr;
-use libc::types::os::common::bsd44::in6_addr;
-use libc::types::os::common::bsd44::sa_family_t;
-use libc::types::os::common::posix01::timeval;
-use libc::funcs::bsd43::setsockopt;
-use libc::consts::os::bsd44::SOL_SOCKET;
-use libc::consts::os::bsd44::AF_INET;
-use libc::consts::os::bsd44::AF_INET6;
-use libc::types::os::arch::c95::c_int;
-use libc::types::os::arch::c95::c_char;
-use libc::types::common::c95::c_void;
-use libc::funcs::bsd43::send;
-use libc::funcs::bsd43::recv;
+use std::time::Duration;
+use libc::connect;
+use libc::socklen_t;
+use libc::sockaddr_in;
+use libc::sockaddr_in6;
+use libc::in_addr;
+use libc::sa_family_t;
+use libc::timeval;
+use libc::setsockopt;
+use libc::SOL_SOCKET;
+use libc::AF_INET;
+use libc::AF_INET6;
+use libc::c_int;
+use libc::c_char;
+use libc::c_void;
+use libc::send;
+use libc::recv;
 use std::ffi::CString;
 
 use byteorder::{BigEndian, WriteBytesExt};
@@ -41,7 +39,7 @@ extern {
 	fn inet_pton(family: c_int, src: *const c_char, dst: *mut c_void) -> c_int;
 }
 
-pub struct ConnectedSocket<S: ?Sized> {
+pub struct ConnectedSocket<S> {
 	sock: S
 }
 
@@ -56,17 +54,15 @@ fn to_be(host: u16) -> u16 {
 	let mut c = Cursor::new(buf);
 
 	c.write_u16::<BigEndian>(host).unwrap();
-	unsafe {
-		// 'c' is a pointer to 'net' and 'net' is memory-managed,
-		// so 'net' is dropped when returning and dropping 'c' would actually
-		// double-drop 'net'
-		mem::forget(c)
-	};
+	// 'c' is a pointer to 'net' and 'net' is memory-managed,
+	// so 'net' is dropped when returning and dropping 'c' would actually
+	// double-drop 'net'
+	mem::forget(c);
 
 	net
 }
 
-impl<S: AsRawFd+?Sized> AsRawFd for ConnectedSocket<S> {
+impl<S: AsRawFd> AsRawFd for ConnectedSocket<S> {
 	fn as_raw_fd(&self) -> RawFd {
 		self.sock.as_raw_fd()
 	}
@@ -112,9 +108,7 @@ fn new_sockaddr_in6() -> sockaddr_in6 {
 		sin6_port:     0,
 		sin6_flowinfo: 0,
 		sin6_scope_id: 0,
-		sin6_addr:   in6_addr {
-			s6_addr: [0; 8],
-		}
+		.. unsafe { mem::zeroed() }
 	}
 }
 
@@ -127,9 +121,7 @@ fn new_sockaddr_in6() -> sockaddr_in6 {
 		sin6_port:     0,
 		sin6_flowinfo: 0,
 		sin6_scope_id: 0,
-		sin6_addr:   in6_addr {
-			s6_addr: [0; 8],
-		}
+		.. unsafe { mem::zeroed() }
 	}
 }
 
@@ -183,7 +175,8 @@ impl IntoSockaddrIn for SocketAddr {
 }
 
 pub trait Connect {
-	fn connect<A: ToSocketAddrs + ?Sized>(self, addr: &A) -> Result<ConnectedSocket<Self>,Error>;
+	fn connect<A: ToSocketAddrs + ?Sized>(self, addr: &A) -> Result<ConnectedSocket<Self>,Error>
+		where Self: std::marker::Sized;
 }
 
 impl Connect for UdpSocket {
@@ -220,13 +213,13 @@ impl Connect for UdpSocket {
 	}
 }
 
-impl<S: AsRawFd+?Sized> Read for ConnectedSocket<S> {
+impl<S: AsRawFd> Read for ConnectedSocket<S> {
 	fn read(&mut self, buf: &mut [u8]) -> Result<usize,Error> {
 		let flags = 0;
 		let ptr = buf.as_mut_ptr() as *mut c_void;
 
 		let len = unsafe {
-			recv(self.as_raw_fd(), ptr, buf.len() as u64, flags)
+			recv(self.as_raw_fd(), ptr, buf.len(), flags)
 		};
 
 		match len {
@@ -238,15 +231,15 @@ impl<S: AsRawFd+?Sized> Read for ConnectedSocket<S> {
 	}
 }
 
-impl<S: AsRawFd+?Sized> Write for ConnectedSocket<S> {
+impl<S: AsRawFd> Write for ConnectedSocket<S> {
 	fn write(&mut self, buf: &[u8]) -> Result<usize,Error> {
 		let flags = 0;
 		let ptr = buf.as_ptr() as *const c_void;
 
 		let res = unsafe {
-			send(self.as_raw_fd(), ptr, buf.len() as u64, flags)
+			send(self.as_raw_fd(), ptr, buf.len(), flags)
 		};
-		if res == (buf.len() as i64) {
+		if res >= 0 && (res as usize) == buf.len() {
 			Ok(res as usize)
 		} else {
 			Err(Error::last_os_error())
@@ -265,8 +258,8 @@ pub trait SetTimeout {
 impl<S:AsRawFd> SetTimeout for S {
 	fn set_timeout(&self, timeout: Duration) {
 		let tv = timeval {
-			tv_sec: timeout.num_seconds(),
-			tv_usec: 0,
+			tv_sec: timeout.as_secs() as i64,
+			tv_usec: (timeout.subsec_nanos() / 1000) as i64,
 		};
 
 		unsafe {
